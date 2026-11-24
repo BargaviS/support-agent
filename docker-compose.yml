@@ -1,0 +1,43 @@
+services:
+  db:                                        # service 1: the database
+    image: pgvector/pgvector:pg16            # PostgreSQL 16 with vector search built in
+    environment:                             # settings passed into the container
+      POSTGRES_USER: ${POSTGRES_USER}        # values come from your .env file
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data      # keep data on disk so it survives restarts
+    ports:
+      - "5432:5432"                          # laptop port : container port
+    healthcheck:                             # how Docker knows the DB is ready
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  api:                                       # service 2: your FastAPI app
+    build: ./api                             # build it from api/Dockerfile
+    env_file: .env                           # pass all .env values in
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy           # wait until the DB is ready
+    volumes:
+      - ./api:/app                           # edit code on your laptop, see it live in the container
+
+  n8n:                                       # service 3: the workflow tool
+    image: n8nio/n8n:latest                  # we'll pin an exact version before deploying
+    ports:
+      - "5678:5678"
+    environment:
+      - TZ=Asia/Kolkata                      # use Indian time
+      - GENERIC_TIMEZONE=Asia/Kolkata
+    volumes:
+      - n8n_data:/home/node/.n8n             # keep your workflows on disk
+
+volumes:                                     # named storage areas Docker manages
+  pgdata:
+  n8n_data:
